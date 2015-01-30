@@ -13,6 +13,8 @@
 
 package org.cloudfoundry.identity.uaa.authorization;
 
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.security.Principal;
 import java.util.Collections;
 import java.util.Date;
@@ -392,6 +394,14 @@ public class UaaAuthorizationEndpoint extends AbstractEndpoint {
         }
     }
 
+    private String encode(String value) {
+        try {
+            return URLEncoder.encode(value,"UTF-8");
+        } catch (UnsupportedEncodingException x) {
+            throw new IllegalArgumentException(x);
+        }
+    }
+
     private String getSuccessfulRedirect(AuthorizationRequest authorizationRequest, String authorizationCode) {
 
         if (authorizationCode == null) {
@@ -399,14 +409,16 @@ public class UaaAuthorizationEndpoint extends AbstractEndpoint {
         }
 
         UriComponentsBuilder template = UriComponentsBuilder.fromUriString(authorizationRequest.getRedirectUri());
-        template.queryParam("code", authorizationCode);
+        //decode already encoded values
+        template = UriComponentsBuilder.fromHttpUrl(template.build(true).toUriString());
+        template.queryParam("code", encode(authorizationCode));
 
         String state = authorizationRequest.getState();
         if (state != null) {
-            template.queryParam("state", state);
+            template.queryParam("state", encode(state));
         }
 
-        return template.build().encode().toUriString();
+        return template.build(true).toUriString();
     }
 
     private String getUnsuccessfulRedirect(AuthorizationRequest authorizationRequest, OAuth2Exception failure,
@@ -418,24 +430,20 @@ public class UaaAuthorizationEndpoint extends AbstractEndpoint {
         }
 
         UriComponentsBuilder template = UriComponentsBuilder.fromUriString(authorizationRequest.getRedirectUri());
-        Map<String, String> query = new LinkedHashMap<String, String>();
+        //decode already encoded values
+        template = UriComponentsBuilder.fromHttpUrl(template.build(true).toUriString());
         StringBuilder values = new StringBuilder();
 
-        values.append("error={error}");
-        query.put("error", failure.getOAuth2ErrorCode());
-
-        values.append("&error_description={error_description}");
-        query.put("error_description", failure.getMessage());
+        values.append("error="+encode(failure.getOAuth2ErrorCode()));
+        values.append("&error_description="+encode(failure.getMessage()));
 
         if (authorizationRequest.getState() != null) {
-            values.append("&state={state}");
-            query.put("state", authorizationRequest.getState());
+            values.append("&state="+encode(authorizationRequest.getState()));
         }
 
         if (failure.getAdditionalInformation() != null) {
             for (Map.Entry<String, String> additionalInfo : failure.getAdditionalInformation().entrySet()) {
-                values.append("&" + additionalInfo.getKey() + "={" + additionalInfo.getKey() + "}");
-                query.put(additionalInfo.getKey(), additionalInfo.getValue());
+                values.append("&" + encode(additionalInfo.getKey()) + "=" + encode(additionalInfo.getValue()));
             }
         }
 
@@ -445,7 +453,7 @@ public class UaaAuthorizationEndpoint extends AbstractEndpoint {
             template.query(values.toString());
         }
 
-        return template.build().expand(query).encode().toUriString();
+        return template.build(true).toUriString();
 
     }
 
